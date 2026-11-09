@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LINE Viewer</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        background-color: #7b9acc;
+        color: #111;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow-x: hidden; /* 横スクロールを完全に禁止 */
+        overflow-y: hidden;
+      }
+
+      /* 初期：ファイル選択画面 */
+      #welcome-screen {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background-color: #fff;
+        padding: 24px;
+        text-align: center;
+      }
+      .upload-card {
+        background: #f8f9fa;
+        border: 2px dashed #cbd5e1;
+        border-radius: 16px;
+        padding: 40px 24px;
+        max-width: 400px;
+        width: 100%;
+      }
+      .upload-card h2 {
+        font-size: 18px;
+        margin-bottom: 12px;
+        color: #334155;
+      }
+      .upload-card p {
+        font-size: 13px;
+        color: #64748b;
+        margin-bottom: 20px;
+      }
+      .file-input-btn {
+        background-color: #06c755;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 24px;
+        font-weight: bold;
+        cursor: pointer;
+        display: inline-block;
+        font-size: 14px;
+        box-shadow: 0 4px 12px rgba(6, 199, 85, 0.3);
+      }
+      input[type="file"] {
+        display: none;
+      }
+
+      /* チャット画面本体 */
+      #chat-container {
+        display: none;
+        flex: 1;
+        flex-direction: column;
+        max-width: 600px;
+        width: 100%;
+        margin: 0 auto;
+        background-color: #7b9acc;
+        height: 100vh;
+        overflow: hidden;
+        position: relative;
+      }
+
+      /* ヘッダー */
+      .chat-header {
+        background-color: #7b9acc;
+        color: white;
+        padding: 10px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 56px;
+        flex-shrink: 0;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        z-index: 10;
+      }
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+      .back-icon {
+        font-size: 20px;
+        cursor: pointer;
+      }
+      .room-title {
+        font-size: 16px;
+        font-weight: bold;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        position: relative;
+      }
+      .header-icon {
+        font-size: 18px;
+        cursor: pointer;
+      }
+
+      /* 視点切替ポップオーバーメニュー */
+      .menu-dropdown {
+        display: none;
+        position: absolute;
+        top: 40px;
+        right: 0;
+        background: white;
+        color: #333;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        width: 260px;
+        z-index: 100;
+        padding: 8px 0;
+        font-size: 14px;
+      }
+      .menu-dropdown.active {
+        display: block;
+      }
+      .menu-item {
+        padding: 10px 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .menu-item:hover {
+        background: #f1f5f9;
+      }
+      .menu-item.selected {
+        font-weight: bold;
+        color: #06c755;
+      }
+
+      /* メッセージリスト領域 */
+      .chat-messages {
+        flex: 1;
+        padding: 12px 12px;
+        overflow-y: auto;
+        overflow-x: hidden; /* 横スクロール厳禁 */
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      /* 日付ピル */
+      .date-divider {
+        text-align: center;
+        margin: 16px 0 12px 0;
+      }
+      .date-pill {
+        background-color: rgba(0, 0, 0, 0.15);
+        color: white;
+        font-size: 11px;
+        padding: 4px 10px;
+        border-radius: 10px;
+        display: inline-block;
+      }
+
+      /* システムメッセージ */
+      .system-message {
+        text-align: center;
+        margin: 8px 0;
+      }
+      .system-bubble {
+        background-color: rgba(0, 0, 0, 0.15);
+        color: white;
+        font-size: 11px;
+        padding: 4px 12px;
+        border-radius: 10px;
+        display: inline-block;
+        max-width: 85%;
+        word-break: break-all;
+      }
+
+      /* メッセージ行 */
+      .message-row {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 2px;
+        width: 100%;
+        max-width: 100%;
+      }
+      .message-row.mine {
+        flex-direction: row-reverse;
+      }
+
+      /* アイコン */
+      .message-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        font-size: 14px;
+        flex-shrink: 0;
+        margin-right: 8px;
+      }
+      .message-row.mine .message-avatar {
+        display: none; /* 自分側はアイコン非表示 */
+      }
+      .avatar-space {
+        width: 44px; /* アイコン分の幅を確保して揃える */
+        flex-shrink: 0;
+      }
+
+      /* メッセージ本体まわり */
+      .message-content-wrapper {
+        display: flex;
+        flex-direction: column;
+        max-width: calc(100% - 50px);
+        min-width: 0;
+      }
+      .message-row.mine .message-content-wrapper {
+        align-items: flex-end;
+      }
+      .sender-name {
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.9);
+        margin-bottom: 2px;
+        margin-left: 2px;
+      }
+      .message-row.mine .sender-name {
+        display: none;
+      }
+
+      /* 吹き出しレイアウト */
+      .message-body-container {
+        display: flex;
+        align-items: flex-end;
+        gap: 4px;
+        max-width: 100%;
+      }
+      .message-row.mine .message-body-container {
+        flex-direction: row-reverse;
+      }
+
+      .bubble {
+        padding: 8px 12px;
+        border-radius: 14px;
+        font-size: 14px;
+        line-height: 1.4;
+        word-break: break-word;
+        white-space: pre-wrap;
+        position: relative;
+        max-width: 100%;
+      }
+
+      /* 相手の吹き出し（白） */
+      .message-row:not(.mine) .bubble {
+        background-color: #ffffff;
+        color: #111111;
+        border-top-left-radius: 4px; /* しっぽ側の角の丸みを抑えて自然に */
+      }
+      /* 自分の吹き出し（緑） */
+      .message-row.mine .bubble {
+        background-color: #85e86a;
+        color: #111111;
+        border-top-right-radius: 4px;
+      }
+
+      /* 時間 */
+      .message-time {
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.7);
+        white-space: nowrap;
+        flex-shrink: 0;
+        margin-bottom: 1px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ファイル選択画面 -->
+    <div id="welcome-screen">
+      <div class="upload-card">
+        <h2>LINEトーク履歴の読み込み</h2>
+        <p>LINEから書き出した .txt ファイルを選択してください。</p>
+        <label class="file-input-btn">
+          ファイルを選択
+          <input type="file" id="file-input" accept=".txt" />
+        </label>
+      </div>
+    </div>
+
+    <!-- チャット画面 -->
+    <div id="chat-container">
+      <div class="chat-header">
+        <div class="header-left">
+          <span class="back-icon" id="back-btn">＜</span>
+          <span class="room-title" id="room-title">トークルーム</span>
+        </div>
+        <div class="header-right">
+          <span class="header-icon" id="menu-btn">≡</span>
+          <div class="menu-dropdown" id="menu-dropdown">
+            <div class="menu-item selected" data-user="">
+              <span>指定なし（全員左側）</span>
+            </div>
+            <!-- 動的挿入 -->
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-messages" id="chat-messages">
+        <!-- メッセージがここに挿入されます -->
+      </div>
+    </div>
+
+    <script>
+      let allMessages = [];
+      let roomName = "トークルーム";
+      let participants = [];
+      let myName = ""; // 右側に表示する人（デフォルトなし）
+      const avatarColors = [
+        "#e056fd",
+        "#686de0",
+        "#30336b",
+        "#eb4d4b",
+        "#f0932b",
+        "#6ab04c",
+        "#22a6b3",
+        "#0984e3",
+      ];
+      const userColorMap = {};
+
+      function getColorForUser(name) {
+        if (!userColorMap[name]) {
+          let hash = 0;
+          for (let i = 0; i < name.length; i++) {
+            hash = name.charCodeAt(i) + ((hash << 5) - hash);
+          }
+          userColorMap[name] =
+            avatarColors[Math.abs(hash) % avatarColors.length];
+        }
+        return userColorMap[name];
+      }
+
+      document
+        .getElementById("file-input")
+        .addEventListener("change", function (e) {
+          const file = e.target.files[0];
+          if (!file) return;
+
+          // ファイル名からルーム名を抽出 (例: [LINE] 動機付けP 6班のトーク.txt -> 動機付けP 6班)
+          let nameClean = file.name.replace(/\.[^/.]+$/, "");
+          nameClean = nameClean
+            .replace(/^\[LINE\]\s*/, "")
+            .replace(/のトーク(履歴)?$/, "");
+          roomName = nameClean || "トークルーム";
+
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            const text = e.target.result;
+            parseLineLog(text);
+            showChatScreen();
+          };
+          reader.readAsText(file);
+        });
+
+      document
+        .getElementById("back-btn")
+        .addEventListener("click", function () {
+          document.getElementById("chat-container").style.display = "none";
+          document.getElementById("welcome-screen").style.display = "flex";
+          document.getElementById("file-input").value = "";
+        });
+
+      const menuBtn = document.getElementById("menu-btn");
+      const menuDropdown = document.getElementById("menu-dropdown");
+
+      menuBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        menuDropdown.classList.toggle("active");
+      });
+
+      document.addEventListener("click", function () {
+        menuDropdown.classList.remove("active");
+      });
+
+      menuDropdown.addEventListener("click", function (e) {
+        e.stopPropagation();
+      });
+
+      function parseLineLog(text) {
+        const lines = text.split(/\r\n|\n/);
+        allMessages = [];
+        let currentDate = "";
+        let userSet = new Set();
+
+        // スマホ版・PC版の正規表現パターン
+        const datePattern1 = /^(\d{4}\/\d{1,2}\/\d{1,2}\([月火水木金土日]\))$/; // スマホ版
+        const datePattern2 =
+          /^(\d{4}\.\d{1,2}\.\d{1,2}\s+[月火水木金土日]曜日)$/; // PC版
+
+        // メッセージ行のパース用 (例: 18:31\tTakara\t本文 または 18:31 Takara 本文)
+        for (let i = 0; i < lines.length; i++) {
+          let line = lines[i];
+
+          if (datePattern1.test(line) || datePattern2.test(line)) {
+            currentDate = line
+              .replace(/\s+[月火水木金土日]曜日$/, "")
+              .replace(/\./g, "/");
+            continue;
+          }
+
+          // タブ区切り (スマホ版) または スペース区切り (PC版) の解析
+          let parts = line.split("\t");
+          let time = "",
+            sender = "",
+            content = "";
+
+          if (parts.length >= 3) {
+            time = parts[0].trim();
+            sender = parts[1].trim();
+            content = parts.slice(2).join("\n");
+          } else if (parts.length === 2) {
+            let spaceParts = parts[0].trim().split(" ");
+            time = spaceParts[0];
+            sender = spaceParts.slice(1).join(" ");
+            content = parts[1];
+          } else {
+            // スペース区切りのパース (PC版)
+            let match = line.match(/^(\d{2}:\d{2})\s+(.+?)\s+(.+)$/);
+            if (match) {
+              time = match[1];
+              sender = match[2];
+              content = match[3];
+            } else {
+              // 複数行メッセージの継続行
+              if (allMessages.length > 0 && line.trim() !== "") {
+                allMessages[allMessages.length - 1].content += "\n" + line;
+              }
+              continue;
+            }
+          }
+
+          if (!time.match(/^\d{2}:\d{2}$/)) continue;
+
+          // PC版のスタンプ変換
+          if (content === "スタンプ") {
+            content = "[スタンプ]";
+          }
+
+          let isSystem = false;
+          // システムメッセージ判定
+          if (
+            content.includes("がグループに追加しました") ||
+            content.includes("がグループから退会しました") ||
+            content.includes("通話が終了しました")
+          ) {
+            isSystem = true;
+          }
+
+          if (!isSystem && sender) {
+            userSet.add(sender);
+          }
+
+          allMessages.push({
+            date: currentDate,
+            time: time,
+            sender: sender,
+            content: content,
+            isSystem: isSystem,
+          });
+        }
+
+        participants = Array.from(userSet);
+        buildMenu();
+      }
+
+      function buildMenu() {
+        menuDropdown.innerHTML = `
+                <div class="menu-item ${myName === "" ? "selected" : ""}" data-user="">
+                    <span>指定なし（全員左側）</span>
+                </div>
+            `;
+        participants.forEach((user) => {
+          let isSel = myName === user;
+          menuDropdown.innerHTML += `
+                    <div class="menu-item ${isSel ? "selected" : ""}" data-user="${user}">
+                        <div style="width:24px;height:24px;border-radius:50%;background:${getColorForUser(user)};color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;">${user.charAt(0)}</div>
+                        <span>${user}（右側・緑）</span>
+                    </div>
+                `;
+        });
+
+        // メニュークリック時のイベント設定
+        document.querySelectorAll(".menu-item").forEach((item) => {
+          item.addEventListener("click", function () {
+            myName = this.getAttribute("data-user");
+            menuDropdown.classList.remove("active");
+            buildMenu();
+            renderMessages();
+          });
+        });
+      }
+
+      function showChatScreen() {
+        document.getElementById("welcome-screen").style.display = "none";
+        document.getElementById("chat-container").style.display = "flex";
+        document.getElementById("room-title").textContent = roomName;
+        renderMessages();
+      }
+
+      function renderMessages() {
+        const container = document.getElementById("chat-messages");
+        container.innerHTML = "";
+
+        let lastDate = "";
+        let lastSender = "";
+        let lastTime = "";
+
+        allMessages.forEach((msg, idx) => {
+          // 日付の変更があれば日付ピルを表示
+          if (msg.date && msg.date !== lastDate) {
+            lastDate = msg.date;
+            lastSender = ""; // 日付が変わったら連続判定をリセット
+            let dateDiv = document.createElement("div");
+            dateDiv.className = "date-divider";
+            let cleanDate = lastDate.replace(/\b\d{4}\//, ""); // 年を省略してすっきりさせる
+            dateDiv.innerHTML = `<span class="date-pill">${cleanDate}</span>`;
+            container.appendChild(dateDiv);
+          }
+
+          // システムメッセージ
+          if (msg.isSystem) {
+            lastSender = "";
+            let sysDiv = document.createElement("div");
+            sysDiv.className = "system-message";
+            sysDiv.innerHTML = `<span class="system-bubble">${escapeHtml(msg.content)}</span>`;
+            container.appendChild(sysDiv);
+            return;
+          }
+
+          let isMine = msg.sender === myName && myName !== "";
+
+          // 同じ人が同じ分に連続して送ったか判定
+          let isContinuous = msg.sender === lastSender && msg.time === lastTime;
+          lastSender = msg.sender;
+          lastTime = msg.time;
+
+          let rowDiv = document.createElement("div");
+          rowDiv.className = `message-row ${isMine ? "mine" : ""}`;
+
+          let avatarHtml = "";
+          if (!isMine) {
+            if (!isContinuous) {
+              let initial = msg.sender.charAt(0);
+              let color = getColorForUser(msg.sender);
+              avatarHtml = `<div class="message-avatar" style="background-color: ${color};">${initial}</div>`;
+            } else {
+              avatarHtml = `<div class="avatar-space"></div>`;
+            }
+          }
+
+          let senderNameHtml =
+            !isMine && !isContinuous
+              ? `<div class="sender-name">${escapeHtml(msg.sender)}</div>`
+              : "";
+          let timeHtml = `<div class="message-time">${msg.time}</div>`;
+
+          let bodyContainerHtml = "";
+          if (isMine) {
+            bodyContainerHtml = `
+                        <div class="message-body-container">
+                            ${timeHtml}
+                            <div class="bubble">${escapeHtml(msg.content)}</div>
+                        </div>
+                    `;
+          } else {
+            bodyContainerHtml = `
+                        <div class="message-body-container">
+                            <div class="bubble">${escapeHtml(msg.content)}</div>
+                            ${timeHtml}
+                        </div>
+                    `;
+          }
+
+          rowDiv.innerHTML = `
+                    ${avatarHtml}
+                    <div class="message-content-wrapper">
+                        ${senderNameHtml}
+                        ${bodyContainerHtml}
+                    </div>
+                `;
+
+          container.appendChild(rowDiv);
+        });
+
+        // 最下部にスクロール
+        container.scrollTop = container.scrollHeight;
+      }
+
+      function escapeHtml(str) {
+        return str
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+    </script>
+  </body>
+</html>
